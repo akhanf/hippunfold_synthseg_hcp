@@ -142,9 +142,15 @@ rule generate_synth_mri:
         n_examples='{n_examples}',
         generated_dir='{subject}_hemi-{hemi}_n-{n_examples}_generated',
         out_prefix='{subject}_{hemi}'
-    threads: 8
+    threads: 32
     output:
         generated_tar=join(root,'{subject}_hemi-{hemi}_n-{n_examples}_generated.tar')
+    resources:
+        gpus=1,
+        mem_mb=32000,
+        time=10
+    group: 
+        'synth'
     shell: 
         'singularity exec --nv {input.container} python {input.script} ' #args below
         ' {input.label_img_or_dir}'
