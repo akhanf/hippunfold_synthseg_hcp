@@ -8,6 +8,8 @@
 
 configfile: 'config.yml'
 
+from os.path import join
+
 root='results'
 tmp_dir='/tmp/akhanf'
 
@@ -18,10 +20,15 @@ subjects=[subj.strip() for subj in subjects]
 
 hemis=['L','R']
 
+rule all_synthmri:
+    input: 
+        generated_tar=expand(join(root,'{subject}_hemi-{hemi}_n-{n_examples}_generated.tar'),subject=subjects,hemi=hemis,n_examples=config['n_examples']),
+
+
+
 rule all_merged:
     input: 
-        merged=expand(os.path.join(root,'{subject}_hemi-{hemi}_mergedseg.nii.gz'),subject=subjects,hemi=hemis),
-        affine_xfm=expand(os.path.join(root,'{subject}_hemi-{hemi}_affine.txt'),subject=subjects,hemi=hemis)
+        merged=expand(join(root,'{subject}_hemi-{hemi}_mergedseg.nii.gz'),subject=subjects,hemi=hemis),
 
 rule unzip_t1:
     input:
@@ -29,7 +36,7 @@ rule unzip_t1:
     params:
         in_file='{subject}_hemi-{hemi}_T1w.nii.gz'
     output:
-        os.path.join(root,'{subject}_hemi-{hemi}_T1w.nii.gz')
+        join(root,'{subject}_hemi-{hemi}_T1w.nii.gz')
     group: 'subj'
     shell:
         'unzip {input.zipfile} -d {root} {params.in_file}'
@@ -40,7 +47,7 @@ rule unzip_seg:
     params:
         in_file='{subject}_hemi-{hemi}_lbl.nii.gz'
     output:
-        os.path.join(root,'{subject}_hemi-{hemi}_lbl.nii.gz')
+        join(root,'{subject}_hemi-{hemi}_lbl.nii.gz')
     group: 'subj'
     shell:
         'unzip {input.zipfile} -d {root} {params.in_file}'
@@ -48,12 +55,12 @@ rule unzip_seg:
 
 rule reg_brain_to_corobl:
     input:
-        fixed=os.path.join(root,'{subject}_hemi-{hemi}_T1w.nii.gz'),
+        fixed=join(root,'{subject}_hemi-{hemi}_T1w.nii.gz'),
         moving=config['brain_t1'],
         init_rigid_xfm='resources/init_rigid_xfm.txt'
     output:
-        rigid_xfm=os.path.join(root,'{subject}_hemi-{hemi}_rigid.txt'),
-        affine_xfm=os.path.join(root,'{subject}_hemi-{hemi}_affine.txt'),
+        rigid_xfm=join(root,'{subject}_hemi-{hemi}_rigid.txt'),
+        affine_xfm=join(root,'{subject}_hemi-{hemi}_affine.txt'),
     threads: 8
     group: 'subj'
     shell:
@@ -62,15 +69,15 @@ rule reg_brain_to_corobl:
 
 rule reslice_brain_to_corobl:
     input:
-        fixed=os.path.join(root,'{subject}_hemi-{hemi}_T1w.nii.gz'),
+        fixed=join(root,'{subject}_hemi-{hemi}_T1w.nii.gz'),
         moving=config['brain_t1'],
         aparc_aseg=config['aparc_aseg'],
-        xfm=os.path.join(root,'{subject}_hemi-{hemi}_affine.txt'),
+        xfm=join(root,'{subject}_hemi-{hemi}_affine.txt'),
     params:
         label_smoothing='0.6mm'
     output:
-        reg_t1=os.path.join(root,'{subject}_hemi-{hemi}_regbrain.nii.gz'),
-        aparc_aseg=os.path.join(root,'{subject}_hemi-{hemi}_aparc+aseg.nii.gz'),
+        reg_t1=join(root,'{subject}_hemi-{hemi}_regbrain.nii.gz'),
+        aparc_aseg=join(root,'{subject}_hemi-{hemi}_aparc+aseg.nii.gz'),
     threads: 8
     group: 'subj'
     shell:
@@ -80,12 +87,12 @@ rule reslice_brain_to_corobl:
 
 rule smooth_hipp_lbls:
     input:
-        seg=os.path.join(root,'{subject}_hemi-{hemi}_lbl.nii.gz'),
+        seg=join(root,'{subject}_hemi-{hemi}_lbl.nii.gz'),
         xfm='resources/identity_xfm.txt'
     params:
         label_smoothing='0.3mm'
     output:
-        seg=os.path.join(root,'{subject}_hemi-{hemi}_hippunfold.nii.gz'),
+        seg=join(root,'{subject}_hemi-{hemi}_hippunfold.nii.gz'),
     threads: 8
     group: 'subj'
     shell:
@@ -95,9 +102,9 @@ rule smooth_hipp_lbls:
 rule clean_aparc:
     """set everything >1001 to label 3 (ie all cortical GM to same label)"""
     input:
-        aparc_aseg=os.path.join(root,'{subject}_hemi-{hemi}_aparc+aseg.nii.gz'),
+        aparc_aseg=join(root,'{subject}_hemi-{hemi}_aparc+aseg.nii.gz'),
     output:
-        clean_aseg=os.path.join(root,'{subject}_hemi-{hemi}_cleanaseg.nii.gz'),
+        clean_aseg=join(root,'{subject}_hemi-{hemi}_cleanaseg.nii.gz'),
     group: 'subj'
     shell:
         'c3d {input.aparc_aseg} -threshold 1000 Inf 3 0 -popas GM '
@@ -110,10 +117,10 @@ rule clean_aparc:
 rule merge_labels:
     """ merge by adding 1000 to labels in the hippocampus (1 through 8 now 1001 to 1008) """
     input:
-        hippunfold=os.path.join(root,'{subject}_hemi-{hemi}_hippunfold.nii.gz'),
-        aseg=os.path.join(root,'{subject}_hemi-{hemi}_cleanaseg.nii.gz'),
+        hippunfold=join(root,'{subject}_hemi-{hemi}_hippunfold.nii.gz'),
+        aseg=join(root,'{subject}_hemi-{hemi}_cleanaseg.nii.gz'),
     output:
-        merged=os.path.join(root,'{subject}_hemi-{hemi}_mergedseg.nii.gz')
+        merged=join(root,'{subject}_hemi-{hemi}_mergedseg.nii.gz')
     group: 'subj'
     shell:
         'c3d {input.hippunfold} -binarize -popas BINARY_HIPP  ' 
@@ -125,15 +132,26 @@ rule merge_labels:
    
 
 
-rule test_generate:
+rule generate_synth_mri:
     input:
-#        merged=os.path.join(root,'{subject}_hemi-{hemi}_mergedseg.nii.gz'),
-        label_dir='labels',
-        label_class_tsv='resources/synthseg_classes.tsv'
+        label_img_or_dir=join(root,'{subject}_hemi-{hemi}_mergedseg.nii.gz'),
+        label_class_tsv='resources/synthseg_classes.tsv',
+        container='/project/6050199/akhanf/singularity/bids-apps/synthseg_v2.0.sif',
+        script='scripts/generate.py'
     params:
-        n_examples=1,
+        n_examples='{n_examples}',
+        generated_dir='{subject}_hemi-{hemi}_n-{n_examples}_generated',
+        out_prefix='{subject}_{hemi}'
+    threads: 8
     output:
-        generated_dir=directory(os.path.join(tmp_dir,'{subject}_hemi-{hemi}_generated'))
-    container: '/project/6050199/akhanf/singularity/bids-apps/synthseg_v2.0.sif'
-    script: 'scripts/generate.py'
+        generated_tar=join(root,'{subject}_hemi-{hemi}_n-{n_examples}_generated.tar')
+    shell: 
+        'singularity exec --nv {input.container} python {input.script} ' #args below
+        ' {input.label_img_or_dir}'
+        ' {input.label_class_tsv}' 
+        ' {params.n_examples} '
+        ' {resources.tmpdir}/{params.generated_dir}/imgs '
+        ' {params.out_prefix} '
+        ' && ' #tar it up afterwards
+        ' tar -cvf {output.generated_tar} -C {resources.tmpdir}/{params.generated_dir} imgs '
 

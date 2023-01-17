@@ -3,13 +3,5 @@ training_zip: /project/6050199/ext-data/hcp1200/deriv/hippunfold_trainingdata_zi
 brain_t1: /project/6050199/ext-data/hcp1200/HCP_1200_T1w_Diffusion_FS/{subject}/T1w/T1w_acpc_dc_restore_brain.nii.gz
 
 aparc_aseg: /project/6050199/ext-data/hcp1200/HCP_1200_T1w_Diffusion_FS/{subject}/T1w/aparc+aseg.nii.gz
-ribbon: /project/6050199/ext-data/hcp1200/HCP_1200_T1w_Diffusion_FS/{subject}/T1w/ribbon.nii.gz
 
-generation_class_name_to_label:
-  BG: 0
-  WM: 1
-  GM: 2
-  CSF: 3
-  Vessel: 4
-  ExtraHipp: 5
-  SRLM: 6
+n_examples: 100
