@@ -4,4 +4,23 @@ brain_t1: /project/6050199/ext-data/hcp1200/HCP_1200_T1w_Diffusion_FS/{subject}/
 
 aparc_aseg: /project/6050199/ext-data/hcp1200/HCP_1200_T1w_Diffusion_FS/{subject}/T1w/aparc+aseg.nii.gz
 
-n_examples: 100
+
+task: Task501_HippSynthHCP
+trainer: nnUNetTrainerV2
+architecture: 3d_fullres
+checkpoint: model_best
+
+
+n_examples: 15
+
+nnunet_env:
+  nnUNet_raw_data_base: 'nnunet_data/raw_data'
+  nnUNet_preprocessed: 'nnunet_data/preprocessed'
+  RESULTS_FOLDER: 'nnunet_data/trained_models'
+
+
+nnunet_env_tmp:
+  nnUNet_raw_data_base: 'nnunet_data/raw_data'
+  nnUNet_preprocessed: '$SLURM_TMPDIR/preprocessed'
+  RESULTS_FOLDER: 'nnunet_data/trained_models'
+

@@ -50,5 +50,5 @@ for n in range(n_examples):
     im, lab = brain_generator.generate_brain()
 
     # save output image and label map
-    utils.save_volume(im, brain_generator.aff, brain_generator.header,f'{generated_dir}/image_{out_prefix}_{n:05d}.nii.gz')
-    utils.save_volume(lab, brain_generator.aff, brain_generator.header,f'{generated_dir}/labels_{out_prefix}_{n:05d}.nii.gz')
+    utils.save_volume(im, brain_generator.aff, brain_generator.header,f'{generated_dir}/imagesTr/{out_prefix}_{n:05d}_0000.nii.gz')
+    utils.save_volume(lab, brain_generator.aff, brain_generator.header,f'{generated_dir}/labelsTr/{out_prefix}_{n:05d}.nii.gz')

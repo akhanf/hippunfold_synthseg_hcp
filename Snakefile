@@ -17,6 +17,20 @@ with open("subjects.txt",'r') as subjtext:
     subjects = subjtext.readlines()
 
 subjects=[subj.strip() for subj in subjects]
+#subjects=subjects[:3] #first 10 subjects for quick test
+
+#do 80/20 split of training/test
+import os
+import random
+random.seed(0)
+num_training = int(0.8 * len(subjects))
+shuffle_subjects = random.sample(subjects,k=len(subjects))
+training_subjects = shuffle_subjects[:num_training]
+testing_subjects = shuffle_subjects[num_training:]
+print(f'number of training subjects: {len(training_subjects)}')
+print(f'number of test subjects: {len(testing_subjects)}')
+
+
 
 hemis=['L','R']
 
@@ -24,7 +38,13 @@ rule all_synthmri:
     input: 
         generated_tar=expand(join(root,'{subject}_hemi-{hemi}_n-{n_examples}_generated.tar'),subject=subjects,hemi=hemis,n_examples=config['n_examples']),
 
+rule all_preproc:
+    input:
+        preprocessed_tar = expand('nnunet_data/preprocessed_{task}.tar',task=config['task'])
 
+rule all_train:
+    input:
+        training_done = expand('nnunet_data/training_done_fold-{fold}.{task}',fold=range(5),task=config['task'])
 
 rule all_merged:
     input: 
@@ -100,7 +120,7 @@ rule smooth_hipp_lbls:
         ' -ri LABEL {params.label_smoothing}  -rm {input.seg} {output.seg} '
 
 rule clean_aparc:
-    """set everything >1001 to label 3 (ie all cortical GM to same label)"""
+    #set everything >1001 to label 3 (ie all cortical GM to same label)
     input:
         aparc_aseg=join(root,'{subject}_hemi-{hemi}_aparc+aseg.nii.gz'),
     output:
@@ -115,7 +135,7 @@ rule clean_aparc:
  
 
 rule merge_labels:
-    """ merge by adding 1000 to labels in the hippocampus (1 through 8 now 1001 to 1008) """
+    #merge by adding 1000 to labels in the hippocampus (1 through 8 now 1001 to 1008) 
     input:
         hippunfold=join(root,'{subject}_hemi-{hemi}_hippunfold.nii.gz'),
         aseg=join(root,'{subject}_hemi-{hemi}_cleanaseg.nii.gz'),
@@ -141,23 +161,114 @@ rule generate_synth_mri:
     params:
         n_examples='{n_examples}',
         generated_dir='{subject}_hemi-{hemi}_n-{n_examples}_generated',
-        out_prefix='{subject}_{hemi}'
+        out_prefix='{subject}_{hemi}',
+        task=config['task']
     threads: 32
     output:
         generated_tar=join(root,'{subject}_hemi-{hemi}_n-{n_examples}_generated.tar')
     resources:
-        gpus=1,
+        #gpus=1,
         mem_mb=32000,
         time=10
     group: 
         'synth'
     shell: 
-        'singularity exec --nv {input.container} python {input.script} ' #args below
+        #'singularity exec --nv {input.container} python {input.script} ' #args below
+        'singularity exec {input.container} python {input.script} ' #args below
         ' {input.label_img_or_dir}'
         ' {input.label_class_tsv}' 
         ' {params.n_examples} '
-        ' {resources.tmpdir}/{params.generated_dir}/imgs '
+        ' {resources.tmpdir}/{params.generated_dir} '
         ' {params.out_prefix} '
         ' && ' #tar it up afterwards
-        ' tar -cvf {output.generated_tar} -C {resources.tmpdir}/{params.generated_dir} imgs '
+        ' tar -cvf {output.generated_tar} -C {resources.tmpdir}/{params.generated_dir} imagesTr labelsTr '
+
+
+localrules: create_dataset_json, extract_rawdata_tars
+
+rule extract_rawdata_tars:
+    input:
+        generated_tars=expand(join(root,'{subject}_hemi-{hemi}_n-{n_examples}_generated.tar'),subject=training_subjects,hemi=hemis,n_examples=config['n_examples']),
+        dataset_json = 'nnunet_data/{task}_dataset.json'
+    output:
+        raw_data_dir = directory('nnunet_data/raw_data/nnUNet_raw_data/{task}')
+    shell:
+        'mkdir -p {output.raw_data_dir} && '
+        'cp -v {input.dataset_json} {output.raw_data_dir}/dataset.json && ' #copy json
+        'for tar in {input.generated_tars}; '
+        'do'
+        '  tar -xvf $tar -C {output.raw_data_dir} imagesTr labelsTr; '
+        'done'
+
+
+rule create_dataset_json:
+    input: 
+        template_json = 'resources/nnunet_template.json'
+    params:
+        training_lbls =  expand('nnunet_data/raw_data/{task}/labelsTr/{subject}_{hemi}_{sample:05d}.nii.gz',subject=training_subjects,hemi=hemis,sample=range(config['n_examples']),allow_missing=True),
+        training_imgs =  expand('nnunet_data/raw_data/{task}/imagesTr/{subject}_{hemi}_{sample:05d}.nii.gz',subject=training_subjects,hemi=hemis,sample=range(config['n_examples']),allow_missing=True)
+    output: 
+        dataset_json = 'nnunet_data/{task}_dataset.json'
+    script: 'scripts/create_nnunet_json.py' 
+
+def get_nnunet_env(wildcards):
+     return ' && '.join([f'export {key}={val}' for (key,val) in config['nnunet_env'].items()])
+ 
+def get_nnunet_env_tmp(wildcards):
+     return ' && '.join([f'export {key}={val}' for (key,val) in config['nnunet_env_tmp'].items()])
+ 
+rule plan_preprocess:
+    input: 
+        raw_data = 'nnunet_data/raw_data/nnUNet_raw_data/{task}'
+    params:
+        nnunet_env_cmd = get_nnunet_env_tmp,
+        task_num = lambda wildcards: re.search('Task([0-9]+)\w*',wildcards.task).group(1),
+    output: 
+        preprocessed_tar = 'nnunet_data/preprocessed_{task}.tar'
+    group: 'preproc'
+    resources:
+        threads = 16,
+        mem_mb = 32000,
+        time = 1440,
+    shell:
+        '{params.nnunet_env_cmd} && '
+        'nnUNet_plan_and_preprocess  -t {params.task_num} --verify_dataset_integrity && '
+        'tar -cvf {output.preprocessed_tar} -C $SLURM_TMPDIR preprocessed'
+
+
+  
+def get_checkpoint_opt(wildcards, output): #NOTE with shell outputs are deleted on calling this rule :(
+    if os.path.exists('trained_models/nnUNet/{arch}/{task}/{trainer}__nnUNetPlansv2.1/fold_{fold}/model_latest.model'):
+        return '--continue_training'
+    else:
+        return '' 
+     
+rule train_fold:
+    input:
+        preprocessed_tar = 'nnunet_data/preprocessed_{task}.tar'
+    params:
+        nnunet_env_cmd = get_nnunet_env_tmp,
+        mkdir_tmp = expand('mkdir -p {env_tmp}', env_tmp=config['nnunet_env_tmp']['nnUNet_preprocessed']),
+        rsync_to_tmp = lambda wildcards: expand('rsync -av {env}/{t}/ {env_tmp}/{t}', env=config['nnunet_env']['nnUNet_preprocessed'], env_tmp=config['nnunet_env_tmp']['nnUNet_preprocessed'], t=wildcards.task),
+        #add --continue_training option if a checkpoint exists
+        checkpoint_opt = get_checkpoint_opt,
+        arch=config['architecture'],
+        trainer=config['trainer']
+    output:
+        training_done = touch('nnunet_data/training_done_fold-{fold}.{task}')
+#        model_dir = directory('trained_models/nnUNet/{arch}/{task}/{trainer}__nnUNetPlansv2.1/fold_{fold}'),
+#        final_model = 'trained_models/nnUNet/{arch}/{task}/{trainer}__nnUNetPlansv2.1/fold_{fold}/model_final_checkpoint.model',
+#        latest_model = 'trained_models/nnUNet/{arch}/{task}/{trainer}__nnUNetPlansv2.1/fold_{fold}/model_latest.model',
+#        best_model = 'trained_models/nnUNet/{arch}/{task}/{trainer}__nnUNetPlansv2.1/fold_{fold}/model_best.model'
+    threads: 16
+    resources:
+        gpus = 1,
+        mem_mb = 64000,
+        time = 4320,
+    group: 'train'
+    shell:
+        '{params.nnunet_env_cmd} && '
+        'tar -xvf {input.preprocessed_tar} -C $SLURM_TMPDIR && ' 
+        'nnUNet_train {params.checkpoint_opt} {params.arch} {params.trainer} {wildcards.task} {wildcards.fold}'
+
 
