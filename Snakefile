@@ -226,8 +226,8 @@ rule plan_preprocess:
     output: 
         preprocessed_tar = 'nnunet_data/preprocessed_{task}.tar'
     group: 'preproc'
+    threads: 16
     resources:
-        threads = 16,
         mem_mb = 32000,
         time = 1440,
     shell:
@@ -235,10 +235,9 @@ rule plan_preprocess:
         'nnUNet_plan_and_preprocess  -t {params.task_num} --verify_dataset_integrity && '
         'tar -cvf {output.preprocessed_tar} -C $SLURM_TMPDIR preprocessed'
 
-
   
 def get_checkpoint_opt(wildcards, output): #NOTE with shell outputs are deleted on calling this rule :(
-    if os.path.exists('trained_models/nnUNet/{arch}/{task}/{trainer}__nnUNetPlansv2.1/fold_{fold}/model_latest.model'):
+    if os.path.exists('nnunet_data/trained_models/nnUNet/{arch}/{task}/{trainer}__nnUNetPlansv2.1/fold_{fold}/model_latest.model'.format(fold=wildcards.fold, task=wildcards.task,arch=config['architecture'],trainer=config['trainer'])):
         return '--continue_training'
     else:
         return '' 
@@ -260,7 +259,7 @@ rule train_fold:
 #        final_model = 'trained_models/nnUNet/{arch}/{task}/{trainer}__nnUNetPlansv2.1/fold_{fold}/model_final_checkpoint.model',
 #        latest_model = 'trained_models/nnUNet/{arch}/{task}/{trainer}__nnUNetPlansv2.1/fold_{fold}/model_latest.model',
 #        best_model = 'trained_models/nnUNet/{arch}/{task}/{trainer}__nnUNetPlansv2.1/fold_{fold}/model_best.model'
-    threads: 16
+    threads: 32
     resources:
         gpus = 1,
         mem_mb = 64000,
